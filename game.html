@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Крестики-нолики</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: sans-serif;
+    background: #f5f5f5;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+    padding: 40px 20px;
+  }
+
+  /* Кнопки режима */
+  .mode-btns {
+    display: flex;
+    gap: 8px;
+  }
+
+  button {
+    padding: 10px 22px;
+    font-size: 14px;
+    border: 1.5px solid #ccc;
+    border-radius: 8px;
+    background: white;
+    cursor: pointer;
+    transition: all 0.18s;
+  }
+  button:hover { background: #f0f0f0; }
+  button.active { border-color: #3b82f6; background: #eff6ff; color: #1d4ed8; }
+
+  /* Счёт */
+  .scoreboard {
+    display: flex;
+    gap: 32px;
+    align-items: center;
+  }
+
+  .player {
+    text-align: center;
+    padding: 12px 20px;
+    border: 2px solid #e5e7eb;
+    border-radius: 12px;
+    min-width: 90px;
+    transition: all 0.2s;
+  }
+  .player.active-player {
+    border-color: #3b82f6;
+    background: #eff6ff;
+  }
+  .player .symbol { font-size: 26px; margin-bottom: 2px; }
+  .player .label { font-size: 11px; color: #9ca3af; margin-bottom: 4px; }
+  .player .score { font-size: 24px; font-weight: 600; }
+
+  #status {
+    font-size: 15px;
+    font-weight: 500;
+    color: #6b7280;
+    text-align: center;
+    min-width: 120px;
+  }
+
+  /* Поле */
+  #board {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    width: 288px;
+  }
+
+  .cell {
+    width: 88px;
+    height: 88px;
+    background: white;
+    border: 1.5px solid #e5e7eb;
+    border-radius: 10px;
+    font-size: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
+    user-select: none;
+  }
+  .cell:hover:not(.taken) { background: #f9fafb; transform: scale(1.05); }
+  .cell.taken { cursor: default; }
+  .cell.win { background: #dcfce7 !important; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <div class="mode-btns">
+    <button id="btn-pvp" onclick="setMode('pvp')">👥 Два игрока</button>
+    <button id="btn-ai" onclick="setMode('ai')">🤖 Против компьютера</button>
+  </div>
+
+  <div class="scoreboard">
+    <div class="player active-player" id="p1">
+      <div class="symbol">✕</div>
+      <div class="label" id="lbl1">Игрок 1</div>
+      <div class="score" id="s1">0</div>
+    </div>
+    <div id="status">Ход: ✕</div>
+    <div class="player" id="p2">
+      <div class="symbol">○</div>
+      <div class="label" id="lbl2">Игрок 2</div>
+      <div class="score" id="s2">0</div>
+    </div>
+  </div>
+
+  <div id="board"></div>
+
+  <button onclick="resetGame()">🔄 Новая игра</button>
+
+</div>
+
+<script>
+  let board, current, scores, over, mode;
+  scores = { x: 0, o: 0 };
+  mode = 'pvp';
+
+  function setMode(m) {
+    mode = m;
+    document.getElementById('btn-pvp').classList.toggle('active', m === 'pvp');
+    document.getElementById('btn-ai').classList.toggle('active', m === 'ai');
+    document.getElementById('lbl2').textContent = m === 'ai' ? 'Компьютер' : 'Игрок 2';
+    scores = { x: 0, o: 0 };
+    document.getElementById('s1').textContent = 0;
+    document.getElementById('s2').textContent = 0;
+    resetGame();
+  }
+
+  function init() {
+    board = Array(9).fill('');
+    current = '✕';
+    over = false;
+    render();
+    updateStatus('Ход: ✕');
+    document.getElementById('p1').classList.add('active-player');
+    document.getElementById('p2').classList.remove('active-player');
+  }
+
+  function render() {
+    const el = document.getElementById('board');
+    el.innerHTML = '';
+    board.forEach((v, i) => {
+      const c = document.createElement('div');
+      c.className = 'cell' + (v ? ' taken' : '');
+      c.textContent = v;
+      c.onclick = () => move(i);
+      el.appendChild(c);
+    });
+  }
+
+  function move(i) {
+    if (over || board[i]) return;
+    board[i] = current;
+    render();
+    if (handleResult()) return;
+    current = current === '✕' ? '○' : '✕';
+    updateTurn();
+    if (mode === 'ai' && current === '○' && !over) {
+      setTimeout(aiMove, 400);
+    }
+  }
+
+  function aiMove() {
+    const best = getBestMove();
+    if (best === -1) return;
+    board[best] = '○';
+    render();
+    if (handleResult()) return;
+    current = '✕';
+    updateTurn();
+  }
+
+  function getBestMove() {
+    // Победный ход
+    for (let i = 0; i < 9; i++) {
+      if (!board[i]) {
+        board[i] = '○';
+        if (checkWin()) { board[i] = ''; return i; }
+        board[i] = '';
+      }
+    }
+    // Блокировка игрока
+    for (let i = 0; i < 9; i++) {
+      if (!board[i]) {
+        board[i] = '✕';
+        if (checkWin()) { board[i] = ''; return i; }
+        board[i] = '';
+      }
+    }
+    // Центр
+    if (!board[4]) return 4;
+    // Углы
+    const corners = [0, 2, 6, 8].filter(i => !board[i]);
+    if (corners.length) return corners[Math.floor(Math.random() * corners.length)];
+    // Любая свободная
+    const free = board.map((v, i) => v ? -1 : i).filter(i => i >= 0);
+    return free.length ? free[Math.floor(Math.random() * free.length)] : -1;
+  }
+
+  function handleResult() {
+    const w = checkWin();
+    if (w) {
+      over = true;
+      w.forEach(i => document.querySelectorAll('.cell')[i].classList.add('win'));
+      if (current === '✕') {
+        scores.x++;
+        document.getElementById('s1').textContent = scores.x;
+      } else {
+        scores.o++;
+        document.getElementById('s2').textContent = scores.o;
+      }
+      const who = current === '✕' ? 'Игрок 1' : (mode === 'ai' ? 'Компьютер' : 'Игрок 2');
+      updateStatus(who + ' победил! 🎉');
+      document.getElementById('p1').classList.remove('active-player');
+      document.getElementById('p2').classList.remove('active-player');
+      return true;
+    }
+    if (board.every(v => v)) {
+      over = true;
+      updateStatus('Ничья!');
+      document.getElementById('p1').classList.remove('active-player');
+      document.getElementById('p2').classList.remove('active-player');
+      return true;
+    }
+    return false;
+  }
+
+  function checkWin() {
+    const lines = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+    for (const l of lines) {
+      if (board[l[0]] && board[l[0]] === board[l[1]] && board[l[1]] === board[l[2]]) return l;
+    }
+    return null;
+  }
+
+  function updateTurn() {
+    document.getElementById('p1').classList.toggle('active-player', current === '✕');
+    document.getElementById('p2').classList.toggle('active-player', current === '○');
+    updateStatus('Ход: ' + current);
+  }
+
+  function updateStatus(t) { document.getElementById('status').textContent = t; }
+  function resetGame() { init(); }
+
+  setMode('pvp');
+</script>
+</body>
+</html>
